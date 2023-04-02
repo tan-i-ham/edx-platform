@@ -43,8 +43,12 @@ from ..tasks import CourseExportTask, CourseImportTask, export_olx, import_olx
 from ..utils import reverse_course_url, reverse_library_url
 
 __all__ = [
-    'import_handler', 'import_status_handler',
-    'export_handler', 'export_output_handler', 'export_status_handler',
+    "import_handler",
+    "import_status_handler",
+    "import_from_canvas_handler",
+    "export_handler",
+    "export_output_handler",
+    "export_status_handler",
 ]
 
 log = logging.getLogger(__name__)
@@ -53,6 +57,49 @@ log = logging.getLogger(__name__)
 CONTENT_RE = re.compile(r"(?P<start>\d{1,11})-(?P<stop>\d{1,11})/(?P<end>\d{1,11})")
 
 STATUS_FILTERS = user_tasks_settings.USER_TASKS_STATUS_FILTERS
+
+
+@transaction.non_atomic_requests
+@login_required
+@ensure_csrf_cookie
+@require_http_methods(("GET", "POST", "PUT"))
+@ensure_valid_course_key
+def import_from_canvas_handler(request, course_key_string):
+    print("import_from_canvas_handler method")
+    print(request.method)
+    courselike_key = CourseKey.from_string(course_key_string)
+    library = isinstance(courselike_key, LibraryLocator)
+    if library:
+        successful_url = reverse_library_url("library_handler", courselike_key)
+        context_name = "context_library"
+        courselike_block = modulestore().get_library(courselike_key)
+    else:
+        successful_url = reverse_course_url("course_handler", courselike_key)
+        context_name = "context_course"
+        courselike_block = modulestore().get_course(courselike_key)
+    if not has_course_author_access(request.user, courselike_key):
+        raise PermissionDenied()
+
+    if "application/json" in request.META.get("HTTP_ACCEPT", "application/json"):
+        if request.method == "GET":  # lint-amnesty, pylint: disable=no-else-raise
+            raise NotImplementedError("coming soon")
+        else:
+            return _write_chunk(request, courselike_key)
+    elif request.method == "GET":  # assume html
+        status_url = reverse_course_url(
+            "import_status_handler", courselike_key, kwargs={"filename": "fillerName"}
+        )
+        return render_to_response(
+            "import-canvas.html",
+            {
+                context_name: courselike_block,
+                "successful_import_redirect_url": successful_url,
+                "import_status_url": status_url,
+                "library": isinstance(courselike_key, LibraryLocator),
+            },
+        )
+    else:
+        return HttpResponseNotFound()
 
 
 @transaction.non_atomic_requests
@@ -73,31 +120,34 @@ def import_handler(request, course_key_string):
     courselike_key = CourseKey.from_string(course_key_string)
     library = isinstance(courselike_key, LibraryLocator)
     if library:
-        successful_url = reverse_library_url('library_handler', courselike_key)
-        context_name = 'context_library'
+        successful_url = reverse_library_url("library_handler", courselike_key)
+        context_name = "context_library"
         courselike_block = modulestore().get_library(courselike_key)
     else:
-        successful_url = reverse_course_url('course_handler', courselike_key)
-        context_name = 'context_course'
+        successful_url = reverse_course_url("course_handler", courselike_key)
+        context_name = "context_course"
         courselike_block = modulestore().get_course(courselike_key)
     if not has_course_author_access(request.user, courselike_key):
         raise PermissionDenied()
 
-    if 'application/json' in request.META.get('HTTP_ACCEPT', 'application/json'):
-        if request.method == 'GET':  # lint-amnesty, pylint: disable=no-else-raise
-            raise NotImplementedError('coming soon')
+    if "application/json" in request.META.get("HTTP_ACCEPT", "application/json"):
+        if request.method == "GET":  # lint-amnesty, pylint: disable=no-else-raise
+            raise NotImplementedError("coming soon")
         else:
             return _write_chunk(request, courselike_key)
-    elif request.method == 'GET':  # assume html
+    elif request.method == "GET":  # assume html
         status_url = reverse_course_url(
-            "import_status_handler", courselike_key, kwargs={'filename': "fillerName"}
+            "import_status_handler", courselike_key, kwargs={"filename": "fillerName"}
         )
-        return render_to_response('import.html', {
-            context_name: courselike_block,
-            'successful_import_redirect_url': successful_url,
-            'import_status_url': status_url,
-            'library': isinstance(courselike_key, LibraryLocator)
-        })
+        return render_to_response(
+            "import.html",
+            {
+                context_name: courselike_block,
+                "successful_import_redirect_url": successful_url,
+                "import_status_url": status_url,
+                "library": isinstance(courselike_key, LibraryLocator),
+            },
+        )
     else:
         return HttpResponseNotFound()
 
@@ -106,7 +156,7 @@ def _save_request_status(request, key, status):
     """
     Save import status for a course in request session
     """
-    session_status = request.session.get('import_status')
+    session_status = request.session.get("import_status")
     if session_status is None:
         session_status = request.session.setdefault("import_status", {})
 
@@ -114,21 +164,25 @@ def _save_request_status(request, key, status):
     request.session.save()
 
 
-def _write_chunk(request, courselike_key):  # lint-amnesty, pylint: disable=too-many-statements
+def _write_chunk(
+    request, courselike_key
+):  # lint-amnesty, pylint: disable=too-many-statements
     """
     Write the OLX file data chunk from the given request to the local filesystem.
     """
     # Upload .tar.gz to local filesystem for one-server installations not using S3 or Swift
     data_root = path(settings.GITHUB_REPO_ROOT)
-    subdir = base64.urlsafe_b64encode(repr(courselike_key).encode('utf-8')).decode('utf-8')
+    subdir = base64.urlsafe_b64encode(repr(courselike_key).encode("utf-8")).decode(
+        "utf-8"
+    )
     course_dir = data_root / subdir
-    filename = request.FILES['course-data'].name
+    filename = request.FILES["course-data"].name
     set_custom_attributes_for_course_key(courselike_key)
-    current_step = 'Uploading'
+    current_step = "Uploading"
 
     def error_response(message, status, stage):
         """Returns Json error response"""
-        return JsonResponse({'ErrMsg': message, 'Stage': stage}, status=status)
+        return JsonResponse({"ErrMsg": message, "Stage": stage}, status=status)
 
     courselike_string = str(courselike_key) + filename
     # Do everything in a try-except block to make sure everything is properly cleaned up.
@@ -136,8 +190,8 @@ def _write_chunk(request, courselike_key):  # lint-amnesty, pylint: disable=too-
         # Use sessions to keep info about import progress
         _save_request_status(request, courselike_string, 0)
 
-        if not filename.endswith('.tar.gz'):
-            error_message = _('We only support uploading a .tar.gz file.')
+        if not filename.endswith(".tar.gz"):
+            error_message = _("We only support uploading a .tar.gz file.")
             _save_request_status(request, courselike_string, -1)
             monitor_import_failure(courselike_key, current_step, message=error_message)
             return error_response(error_message, 415, 0)
@@ -146,7 +200,9 @@ def _write_chunk(request, courselike_key):  # lint-amnesty, pylint: disable=too-
         if not course_dir.isdir():
             os.mkdir(course_dir)
 
-        logging.info(f'Course import {courselike_key}: importing course to {temp_filepath}')
+        logging.info(
+            f"Course import {courselike_key}: importing course to {temp_filepath}"
+        )
 
         # Get upload chunks byte ranges
         try:
@@ -154,65 +210,84 @@ def _write_chunk(request, courselike_key):  # lint-amnesty, pylint: disable=too-
             content_range = matches.groupdict()
         except KeyError:  # Single chunk
             # no Content-Range header, so make one that will work
-            logging.info(f'Course import {courselike_key}: single chunk found')
-            content_range = {'start': 0, 'stop': 1, 'end': 2}
+            logging.info(f"Course import {courselike_key}: single chunk found")
+            content_range = {"start": 0, "stop": 1, "end": 2}
 
         # stream out the uploaded files in chunks to disk
-        is_initial_import_request = int(content_range['start']) == 0
+        is_initial_import_request = int(content_range["start"]) == 0
         if is_initial_import_request:
             mode = "wb+"
-            set_custom_attribute('course_import_init', True)
+            set_custom_attribute("course_import_init", True)
         else:
             mode = "ab+"
             # Appending to fail would fail if the file doesn't exist.
             if not temp_filepath.exists():
-                error_message = _('Some chunks missed during file upload. Please try again')
+                error_message = _(
+                    "Some chunks missed during file upload. Please try again"
+                )
                 _save_request_status(request, courselike_string, -1)
-                log.error(f'Course Import {courselike_key}: {error_message}')
-                monitor_import_failure(courselike_key, current_step, message=error_message)
+                log.error(f"Course Import {courselike_key}: {error_message}")
+                monitor_import_failure(
+                    courselike_key, current_step, message=error_message
+                )
                 return error_response(error_message, 409, 0)
 
             size = os.path.getsize(temp_filepath)
             # Check to make sure we haven't missed a chunk
             # This shouldn't happen, even if different instances are handling
             # the same session, but it's always better to catch errors earlier.
-            if size < int(content_range['start']):
-                error_message = _('File upload failed. Please try again')
+            if size < int(content_range["start"]):
+                error_message = _("File upload failed. Please try again")
                 _save_request_status(request, courselike_string, -1)
-                log.error(f'Course import {courselike_key}: A chunk has been missed')
-                monitor_import_failure(courselike_key, current_step, message=error_message)
+                log.error(f"Course import {courselike_key}: A chunk has been missed")
+                monitor_import_failure(
+                    courselike_key, current_step, message=error_message
+                )
                 return error_response(error_message, 409, 0)
 
             # The last request sometimes comes twice. This happens because
             # nginx sends a 499 error code when the response takes too long.
-            elif size > int(content_range['stop']) and size == int(content_range['end']):
-                return JsonResponse({'ImportStatus': 1})
+            elif size > int(content_range["stop"]) and size == int(
+                content_range["end"]
+            ):
+                return JsonResponse({"ImportStatus": 1})
 
         with open(temp_filepath, mode) as temp_file:
-            for chunk in request.FILES['course-data'].chunks():
+            for chunk in request.FILES["course-data"].chunks():
                 temp_file.write(chunk)
 
         size = os.path.getsize(temp_filepath)
 
-        if int(content_range['stop']) != int(content_range['end']) - 1:
+        if int(content_range["stop"]) != int(content_range["end"]) - 1:
             # More chunks coming
-            return JsonResponse({
-                "files": [{
-                    "name": filename,
-                    "size": size,
-                    "deleteUrl": "",
-                    "deleteType": "",
-                    "url": reverse_course_url('import_handler', courselike_key),
-                    "thumbnailUrl": ""
-                }]
-            })
+            return JsonResponse(
+                {
+                    "files": [
+                        {
+                            "name": filename,
+                            "size": size,
+                            "deleteUrl": "",
+                            "deleteType": "",
+                            "url": reverse_course_url("import_handler", courselike_key),
+                            "thumbnailUrl": "",
+                        }
+                    ]
+                }
+            )
 
-        log.info(f'Course import {courselike_key}: Upload complete')
-        with open(temp_filepath, 'rb') as local_file:
+        log.info(f"Course import {courselike_key}: Upload complete")
+        with open(temp_filepath, "rb") as local_file:
             django_file = File(local_file)
-            storage_path = course_import_export_storage.save('olx_import/' + filename, django_file)
+            storage_path = course_import_export_storage.save(
+                "olx_import/" + filename, django_file
+            )
         import_olx.delay(
-            request.user.id, str(courselike_key), storage_path, filename, request.LANGUAGE_CODE)
+            request.user.id,
+            str(courselike_key),
+            storage_path,
+            filename,
+            request.LANGUAGE_CODE,
+        )
 
     # Send errors to client with stage at which error occurred.
     except Exception as exception:  # pylint: disable=broad-except
@@ -222,10 +297,10 @@ def _write_chunk(request, courselike_key):  # lint-amnesty, pylint: disable=too-
             log.info("Course import %s: Temp data cleared", courselike_key)
 
         monitor_import_failure(courselike_key, current_step, exception=exception)
-        log.exception(f'Course import {courselike_key}: error importing course.')
+        log.exception(f"Course import {courselike_key}: error importing course.")
         return error_response(str(exception), 400, -1)
 
-    return JsonResponse({'ImportStatus': 1})
+    return JsonResponse({"ImportStatus": 1})
 
 
 @transaction.non_atomic_requests
@@ -251,13 +326,15 @@ def import_status_handler(request, course_key_string, filename=None):
         raise PermissionDenied()
 
     # The task status record is authoritative once it's been created
-    args = {'course_key_string': course_key_string, 'archive_name': filename}
+    args = {"course_key_string": course_key_string, "archive_name": filename}
     name = CourseImportTask.generate_name(args)
     task_status = UserTaskStatus.objects.filter(name=name)
-    message = ''
+    message = ""
     for status_filter in STATUS_FILTERS:
-        task_status = status_filter().filter_queryset(request, task_status, import_status_handler)
-    task_status = task_status.order_by('-created').first()
+        task_status = status_filter().filter_queryset(
+            request, task_status, import_status_handler
+        )
+    task_status = task_status.order_by("-created").first()
     if task_status is None:
         # The task hasn't been initialized yet; did we store info in the session already?
         try:
@@ -269,7 +346,11 @@ def import_status_handler(request, course_key_string, filename=None):
         status = 4
     elif task_status.state in (UserTaskStatus.FAILED, UserTaskStatus.CANCELED):
         status = max(-(task_status.completed_steps + 1), -3)
-        artifact = UserTaskArtifact.objects.filter(name='Error', status=task_status).order_by('-created').first()
+        artifact = (
+            UserTaskArtifact.objects.filter(name="Error", status=task_status)
+            .order_by("-created")
+            .first()
+        )
         if artifact:
             message = artifact.text
     else:
@@ -283,16 +364,18 @@ def send_tarball(tarball, size):
     Renders a tarball to response, for use when sending a tar.gz file to the user.
     """
     wrapper = FileWrapper(tarball, settings.COURSE_EXPORT_DOWNLOAD_CHUNK_SIZE)
-    response = StreamingHttpResponse(wrapper, content_type='application/x-tgz')
-    response['Content-Disposition'] = 'attachment; filename=%s' % os.path.basename(tarball.name)
-    response['Content-Length'] = size
+    response = StreamingHttpResponse(wrapper, content_type="application/x-tgz")
+    response["Content-Disposition"] = "attachment; filename=%s" % os.path.basename(
+        tarball.name
+    )
+    response["Content-Length"] = size
     return response
 
 
 @transaction.non_atomic_requests
 @ensure_csrf_cookie
 @login_required
-@require_http_methods(('GET', 'POST'))
+@require_http_methods(("GET", "POST"))
 @ensure_valid_course_key
 def export_handler(request, course_key_string):
     """
@@ -314,29 +397,31 @@ def export_handler(request, course_key_string):
     if isinstance(course_key, LibraryLocator):
         courselike_block = modulestore().get_library(course_key)
         context = {
-            'context_library': courselike_block,
-            'courselike_home_url': reverse_library_url("library_handler", course_key),
-            'library': True
+            "context_library": courselike_block,
+            "courselike_home_url": reverse_library_url("library_handler", course_key),
+            "library": True,
         }
     else:
         courselike_block = modulestore().get_course(course_key)
         if courselike_block is None:
             raise Http404
         context = {
-            'context_course': courselike_block,
-            'courselike_home_url': reverse_course_url("course_handler", course_key),
-            'library': False
+            "context_course": courselike_block,
+            "courselike_home_url": reverse_course_url("course_handler", course_key),
+            "library": False,
         }
-    context['status_url'] = reverse_course_url('export_status_handler', course_key)
+    context["status_url"] = reverse_course_url("export_status_handler", course_key)
 
     # an _accept URL parameter will be preferred over HTTP_ACCEPT in the header.
-    requested_format = request.GET.get('_accept', request.META.get('HTTP_ACCEPT', 'text/html'))
+    requested_format = request.GET.get(
+        "_accept", request.META.get("HTTP_ACCEPT", "text/html")
+    )
 
-    if request.method == 'POST':
+    if request.method == "POST":
         export_olx.delay(request.user.id, course_key_string, request.LANGUAGE_CODE)
-        return JsonResponse({'ExportStatus': 1})
-    elif 'text/html' in requested_format:
-        return render_to_response('export.html', context)
+        return JsonResponse({"ExportStatus": 1})
+    elif "text/html" in requested_format:
+        return render_to_response("export.html", context)
     else:
         # Only HTML request format is supported (no JSON).
         return HttpResponse(status=406)
@@ -377,22 +462,25 @@ def export_status_handler(request, course_key_string):
             status = 0
     elif task_status.state == UserTaskStatus.SUCCEEDED:
         status = 3
-        artifact = UserTaskArtifact.objects.get(status=task_status, name='Output')
+        artifact = UserTaskArtifact.objects.get(status=task_status, name="Output")
         if isinstance(artifact.file.storage, FileSystemStorage):
-            output_url = reverse_course_url('export_output_handler', course_key)
+            output_url = reverse_course_url("export_output_handler", course_key)
         elif isinstance(artifact.file.storage, S3Boto3Storage):
             filename = os.path.basename(artifact.file.name)
             disposition = f'attachment; filename="{filename}"'
-            output_url = artifact.file.storage.url(artifact.file.name, parameters={
-                'ResponseContentDisposition': disposition,
-                'ResponseContentEncoding': 'application/octet-stream',
-                'ResponseContentType': 'application/x-tgz'
-            })
+            output_url = artifact.file.storage.url(
+                artifact.file.name,
+                parameters={
+                    "ResponseContentDisposition": disposition,
+                    "ResponseContentEncoding": "application/octet-stream",
+                    "ResponseContentType": "application/x-tgz",
+                },
+            )
         else:
             output_url = artifact.file.storage.url(artifact.file.name)
     elif task_status.state in (UserTaskStatus.FAILED, UserTaskStatus.CANCELED):
         status = max(-(task_status.completed_steps + 1), -2)
-        errors = UserTaskArtifact.objects.filter(status=task_status, name='Error')
+        errors = UserTaskArtifact.objects.filter(status=task_status, name="Error")
         if errors:
             error = errors[0].text
             try:
@@ -405,9 +493,9 @@ def export_status_handler(request, course_key_string):
 
     response = {"ExportStatus": status}
     if output_url:
-        response['ExportOutput'] = output_url
+        response["ExportOutput"] = output_url
     elif error:
-        response['ExportError'] = error
+        response["ExportError"] = error
     return JsonResponse(response)
 
 
@@ -430,7 +518,7 @@ def export_output_handler(request, course_key_string):
     if task_status and task_status.state == UserTaskStatus.SUCCEEDED:
         artifact = None
         try:
-            artifact = UserTaskArtifact.objects.get(status=task_status, name='Output')
+            artifact = UserTaskArtifact.objects.get(status=task_status, name="Output")
             tarball = course_import_export_storage.open(artifact.file.name)
             return send_tarball(tarball, artifact.file.storage.size(artifact.file.name))
         except UserTaskArtifact.DoesNotExist:
@@ -447,9 +535,9 @@ def _latest_task_status(request, course_key_string, view_func=None):
     Get the most recent export status update for the specified course/library
     key.
     """
-    args = {'course_key_string': course_key_string}
+    args = {"course_key_string": course_key_string}
     name = CourseExportTask.generate_name(args)
     task_status = UserTaskStatus.objects.filter(name=name)
     for status_filter in STATUS_FILTERS:
         task_status = status_filter().filter_queryset(request, task_status, view_func)
-    return task_status.order_by('-created').first()
+    return task_status.order_by("-created").first()

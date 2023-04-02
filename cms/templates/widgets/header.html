@@ -34,6 +34,7 @@
             textbooks_url = reverse('textbooks_list_handler', kwargs={'course_key_string': six.text_type(course_key)})
             videos_url = reverse('videos_handler', kwargs={'course_key_string': six.text_type(course_key)})
             import_url = reverse('import_handler', kwargs={'course_key_string': six.text_type(course_key)})
+            import_from_canvas_url = reverse('import_from_canvas_handler', kwargs={'course_key_string': six.text_type(course_key)})
             course_info_url = reverse('course_info_handler', kwargs={'course_key_string': six.text_type(course_key)})
             export_url = reverse('export_handler', kwargs={'course_key_string': six.text_type(course_key)})
             settings_url = reverse('settings_handler', kwargs={'course_key_string': six.text_type(course_key)})
@@ -146,6 +147,9 @@
                   <li class="nav-item nav-course-tools-import">
                     <a href="${import_url}">${_("Import")}</a>
                   </li>
+                  <li class="nav-item nav-course-tools-import-canvas">
+                    <a href="${import_from_canvas_url}">${_("Import From Canvas")}</a>
+                  </li>
                   <li class="nav-item nav-course-tools-export">
                     <a href="${export_url}">${_("Export")}</a>
                   </li>
@@ -168,6 +172,7 @@
             library_key = context_library.location.course_key
             index_url = reverse('library_handler', kwargs={'library_key_string': six.text_type(library_key)})
             import_url = reverse('import_handler', kwargs={'course_key_string': six.text_type(library_key)})
+            import_from_canvas_url = reverse('import_from_canvas_handler', kwargs={'course_key_string': six.text_type(library_key)})
             lib_users_url = reverse('manage_library_users', kwargs={'library_key_string': six.text_type(library_key)})
             export_url = reverse('export_handler', kwargs={'course_key_string': six.text_type(library_key)})
       %>
@@ -203,6 +208,9 @@
                 <ul>
                   <li class="nav-item nav-course-tools-import">
                     <a href="${import_url}">${_("Import")}</a>
+                  </li>
+                  <li class="nav-item nav-course-tools-import-canvas">
+                    <a href="${import_from_canvas_url}">${_("Import From Canvas")}</a>
                   </li>
                   <li class="nav-item nav-course-tools-export">
                     <a href="${export_url}">${_("Export")}</a>

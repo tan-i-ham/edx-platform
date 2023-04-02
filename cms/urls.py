@@ -125,6 +125,8 @@ urlpatterns = oauth2_urlpatterns + [
             name='assets_handler'),
     re_path(fr'^import/{COURSELIKE_KEY_PATTERN}$', contentstore_views.import_handler,
             name='import_handler'),
+    re_path(fr'^import-canvas/{COURSELIKE_KEY_PATTERN}$', contentstore_views.import_from_canvas_handler,
+            name='import_from_canvas_handler'),            
     re_path(fr'^import_status/{COURSELIKE_KEY_PATTERN}/(?P<filename>.+)$',
             contentstore_views.import_status_handler, name='import_status_handler'),
     # rest api for course import/export
