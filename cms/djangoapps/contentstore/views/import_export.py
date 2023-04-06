@@ -97,12 +97,7 @@ def import_from_canvas_handler(request, course_key_string):
         if request.method == "GET":  # lint-amnesty, pylint: disable=no-else-raise
             raise NotImplementedError("coming soon")
         else:
-            split_arr = request.FILES["course-data"].name.split(".")
-            filename = request.FILES["course-data"].name # 'xxxx.imscc'
-
-            # transformed_targz_file = converter.convert(filename)
             print("test prepared file")
-            # converter_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../capstoneCourseConverter/test-creator'))
             return _write_chunk(request, courselike_key)
     elif request.method == "GET":  # assume html
         status_url = reverse_course_url(
@@ -222,7 +217,6 @@ def _write_chunk(
 
         if not filename.endswith(".tar.gz") and not filename.endswith(".imscc") :
             error_message = _("We only support uploading a .tar.gz file.")
-            print("error line 258")
             _save_request_status(request, courselike_string, -1)
             monitor_import_failure(courselike_key, current_step, message=error_message)
             return error_response(error_message, 415, 0)
@@ -238,12 +232,11 @@ def _write_chunk(
         try:
             matches = CONTENT_RE.search(request.META["HTTP_CONTENT_RANGE"])
             content_range = matches.groupdict()
-            content_range = {"start": 0, "stop": 1, "end": 2}
         except KeyError:  # Single chunk
             # no Content-Range header, so make one that will work
             logging.info(f"Course import {courselike_key}: single chunk found")
             content_range = {"start": 0, "stop": 1, "end": 2}
-
+        log.info(f"content_range dict:  {content_range}")
         # stream out the uploaded files in chunks to disk
         is_initial_import_request = int(content_range["start"]) == 0
         if is_initial_import_request:
@@ -262,15 +255,6 @@ def _write_chunk(
                     courselike_key, current_step, message=error_message
                 )
                 return error_response(error_message, 409, 0)
-            log.info(f"check filename : {filename}")
-            if filename.endswith(".imscc"):
-                script_directory = os.path.dirname(os.path.abspath(__file__))
-                prepared_filename = "openedx_course0405.tar.gz"
-                source_zip_file = os.path.join(script_directory, prepared_filename)
-                shutil.copy(source_zip_file, course_dir)
-                
-                temp_filepath = course_dir / prepared_filename
-                log.info(f"Changed temp_filepath to {temp_filepath}")
             size = os.path.getsize(temp_filepath)
             # Check to make sure we haven't missed a chunk
             # This shouldn't happen, even if different instances are handling
@@ -291,19 +275,10 @@ def _write_chunk(
             ):
                 return JsonResponse({"ImportStatus": 1})
         
-        if not filename.endswith(".imscc"):
-            with open(temp_filepath, mode) as temp_file:
-                for chunk in request.FILES["course-data"].chunks():
-                    temp_file.write(chunk)
+        with open(temp_filepath, mode) as temp_file:
+            for chunk in request.FILES["course-data"].chunks():
+                temp_file.write(chunk)
 
-        script_directory = os.path.dirname(os.path.abspath(__file__))
-        prepared_filename = "openedx_course0405.tar.gz"
-        source_zip_file = os.path.join(script_directory, prepared_filename)
-        shutil.copy(source_zip_file, course_dir)
-
-        temp_filepath = course_dir / prepared_filename
-
-        log.info(f"first post, Changed temp_filepath to {temp_filepath}")
         size = os.path.getsize(temp_filepath)
 
         if int(content_range["stop"]) != int(content_range["end"]) - 1:
@@ -329,10 +304,23 @@ def _write_chunk(
             )
 
         log.info(f"Course import {courselike_key}: Upload complete")
+        log.info(f"============================")
+        log.info(f"temp_filepath: {temp_filepath} , size: {size}")            
+        
+        if filename.endswith(".imscc"):
+            script_directory = os.path.dirname(os.path.abspath(__file__))
+            prepared_filename = "openedx_course0405.tar.gz"
+            source_zip_file = os.path.join(script_directory, prepared_filename)
+            shutil.copy(source_zip_file, course_dir)
+                
+            temp_filepath = course_dir / prepared_filename
+            log.info(f"Changed temp_filepath to {temp_filepath}")         
         with open(temp_filepath, "rb") as local_file:
             django_file = File(local_file)
             print(f'filename: {filename}')
             print(f'django_file: {django_file}')
+
+            #  convert the .imscc file here after all the check been sent
             storage_path = course_import_export_storage.save(
                 "olx_import/" + filename, django_file
             )
