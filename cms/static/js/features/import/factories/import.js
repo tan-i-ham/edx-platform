@@ -34,8 +34,14 @@ define([
                 showImportSubmit = function() {
                     var filepath = $(this).val(),
                         msg;
-
                     if (filepath.substr(filepath.length - 6, 6) === 'tar.gz') {
+                        $('.error-block').hide();
+                        $('.file-name').text($(this).val().replace('C:\\fakepath\\', ''));
+                        $('.file-name-block').show();
+                        $chooseBtn.hide();
+                        $submitBtn.show();
+                        $('.progress').show();
+                    } else if (filepath.substr(filepath.length - 6, 6) === '.imscc') {
                         $('.error-block').hide();
                         $('.file-name').text($(this).val().replace('C:\\fakepath\\', ''));
                         $('.file-name-block').show();
@@ -84,7 +90,7 @@ define([
 
                     file = data.files[0];
 
-                    if (file.name.match(/tar\.gz$/)) {
+                    if (file.name.match(/tar\.gz$/) || file.name.match(/.imscc$/)) {
                         $submitBtn.click(function(event) {
                             event.preventDefault();
 

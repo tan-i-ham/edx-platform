@@ -1,3 +1,3 @@
 [submodule "cms/capstone-course-converter"]
-	path = cms/capstone-course-converter
+	path = cms/capstoneCourseConverter
 	url = git@code.vt.edu:yihanchen/capstone-course-converter.git

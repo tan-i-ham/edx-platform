@@ -473,7 +473,7 @@ def import_olx(self, user_id, course_key_string, archive_path, archive_name, lan
 
     def file_is_supported():
         """Check if it is a supported file."""
-        file_is_valid = archive_name.endswith('.tar.gz')
+        file_is_valid = archive_name.endswith('.tar.gz') or archive_name.endswith('.imscc')
 
         if not file_is_valid:
             message = f'Unsupported file {archive_name}'
