@@ -36,12 +36,11 @@ import json
         <li class="nav-item">
           % if request.COOKIES['edx-user-info']:
           <% cookie = json.loads(request.COOKIES['edx-user-info']) %>
-          <p>type: ${cookie['email']}</p>
           % else:
           <p>The edx-user-info cookie is not set</p>
           % endif
-          <a href="http://localhost:5173" class="button new-button data-tool" target="_blank"></span>
-            ${_("Data Visulization Tool")}</a>
+          <a href="http://localhost:5173/loginEdX?email=hychien2000@gmail.com" class="button new-button data-tool" target="_blank"></span>
+            ${_("Data Visualization Tool")}</a>
           % if course_creator_status=='granted':
           <a href="#" class="button new-button new-course-button"><span class="icon fa fa-plus icon-inline" aria-hidden="true"></span>
               ${_("New Course")}</a>
