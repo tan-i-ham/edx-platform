@@ -7,6 +7,9 @@ from openedx.core.djangolib.markup import HTML, Text
 from openedx.core.djangolib.js_utils import (
       dump_js_escaped_json
   )
+import json  
+
+
 %>
 
 <%inherit file="base.html" />
@@ -31,8 +34,13 @@ from openedx.core.djangolib.js_utils import (
       <h3 class="sr">${_("Page Actions")}</h3>
       <ul>
         <li class="nav-item">
-          <a href="http://localhost:5173" class="button new-button" target="_blank"></span>
-            ${_("Data Visulization Tool")}</a>
+          % if request.COOKIES['edx-user-info']:
+          <% cookie = json.loads(request.COOKIES['edx-user-info']) %>
+          % else:
+          <p>The edx-user-info cookie is not set</p>
+          % endif
+          <a href="http://localhost:5173/loginEdX?email=hychien2000@gmail.com" class="button new-button data-tool" target="_blank"></span>
+            ${_("Data Visualization Tool")}</a>
           % if course_creator_status=='granted':
           <a href="#" class="button new-button new-course-button"><span class="icon fa fa-plus icon-inline" aria-hidden="true"></span>
               ${_("New Course")}</a>
